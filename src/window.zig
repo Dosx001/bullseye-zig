@@ -21,13 +21,16 @@ fn activate(app: [*c]c.GtkApplication, _: c.gpointer) callconv(.C) void {
         @ptrCast(provider),
         c.GTK_STYLE_PROVIDER_PRIORITY_USER,
     );
-    const btn = c.gtk_button_new_with_label("Bullseye");
-    c.gtk_widget_set_size_request(btn, 100, 40);
-    go.gSignalConnect(btn, "clicked", c.G_CALLBACK(clicked), null);
-    c.gtk_window_set_child(win, btn);
+    const grid: [*c]c.GtkGrid = @ptrCast(c.gtk_grid_new());
+    for (0..9) |i| {
+        const box = c.gtk_box_new(c.GTK_ORIENTATION_HORIZONTAL, 0);
+        const label = c.gtk_label_new("●");
+        c.gtk_widget_set_size_request(label, 100, 100);
+        c.gtk_box_append(@ptrCast(box), @ptrCast(label));
+        c.gtk_grid_attach(grid, box, @intCast(i % 3), @intCast(i / 3), 1, 1);
+        c.gtk_widget_set_halign(box, c.GTK_ALIGN_CENTER);
+        c.gtk_widget_set_valign(box, c.GTK_ALIGN_CENTER);
+    }
+    c.gtk_window_set_child(win, @ptrCast(grid));
     c.gtk_window_present(win);
-}
-
-fn clicked(_: [*c]c.GtkWidget, _: c.gpointer) callconv(.C) void {
-    std.log.info("clicked", .{});
 }
