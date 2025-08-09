@@ -15,6 +15,7 @@ pub fn init() void {
 fn activate(app: [*c]c.GtkApplication, _: c.gpointer) callconv(.C) void {
     const provider = c.gtk_css_provider_new();
     const win: [*c]c.GtkWindow = @ptrCast(c.gtk_application_window_new(app));
+    c.gtk_window_fullscreen(win);
     c.gtk_css_provider_load_from_data(provider, @embedFile("styles.css"), -1);
     c.gtk_style_context_add_provider_for_display(
         c.gdk_display_get_default(),
@@ -23,13 +24,12 @@ fn activate(app: [*c]c.GtkApplication, _: c.gpointer) callconv(.C) void {
     );
     const grid: [*c]c.GtkGrid = @ptrCast(c.gtk_grid_new());
     for (0..9) |i| {
-        const box = c.gtk_box_new(c.GTK_ORIENTATION_HORIZONTAL, 0);
+        const box = c.gtk_box_new(c.GTK_ORIENTATION_VERTICAL, 0);
+        c.gtk_widget_set_size_request(box, 400, 400);
         const label = c.gtk_label_new("●");
-        c.gtk_widget_set_size_request(label, 100, 100);
+        c.gtk_widget_set_margin_top(label, 190);
         c.gtk_box_append(@ptrCast(box), @ptrCast(label));
         c.gtk_grid_attach(grid, box, @intCast(i % 3), @intCast(i / 3), 1, 1);
-        c.gtk_widget_set_halign(box, c.GTK_ALIGN_CENTER);
-        c.gtk_widget_set_valign(box, c.GTK_ALIGN_CENTER);
     }
     c.gtk_window_set_child(win, @ptrCast(grid));
     c.gtk_window_present(win);
