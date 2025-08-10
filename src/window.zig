@@ -5,6 +5,17 @@ const c = @cImport({
     @cInclude("gtk-4.0/gtk/gtk.h");
 });
 
+const Region = struct {
+    x: c_int,
+    y: c_int,
+    width: c_int,
+    height: c_int,
+};
+
+var index: usize = 0;
+var regions: [10]Region = undefined;
+var grid: [*c]c.GtkGrid = undefined;
+
 pub fn init() void {
     const app = c.gtk_application_new("com.github.dosx001.bullseye", c.G_APPLICATION_DEFAULT_FLAGS);
     go.gSignalConnect(app, "activate", c.G_CALLBACK(activate), null);
@@ -29,17 +40,28 @@ fn activate(app: [*c]c.GtkApplication, _: c.gpointer) callconv(.C) void {
         @ptrCast(provider),
         c.GTK_STYLE_PROVIDER_PRIORITY_USER,
     );
-    const fourth = @divFloor(rect.height, 4) - 2;
-    const third = @divFloor(rect.width, 3) - 2;
-    const grid: [*c]c.GtkGrid = @ptrCast(c.gtk_grid_new());
+    regions[index] = .{ .x = 0, .y = 0, .width = rect.width, .height = rect.height };
+    grid = @ptrCast(c.gtk_grid_new());
     inline for (0..9) |i| {
         const label = c.gtk_label_new("●");
-        switch (i) {
-            3, 4, 5 => c.gtk_widget_set_size_request(label, third, fourth + fourth),
-            else => c.gtk_widget_set_size_request(label, third, fourth),
-        }
         c.gtk_grid_attach(grid, label, @intCast(i % 3), @intCast(i / 3), 1, 1);
     }
+    update_size();
     c.gtk_window_set_child(win, @ptrCast(grid));
     c.gtk_window_present(win);
+}
+
+fn update_size() void {
+    const rect = regions[index];
+    c.gtk_widget_set_margin_top(@ptrCast(grid), rect.y);
+    c.gtk_widget_set_margin_start(@ptrCast(grid), rect.x);
+    const fourth = @divFloor(rect.height, 4) - 2;
+    const third = @divFloor(rect.width, 3) - 2;
+    inline for (0..9) |i| {
+        const child = c.gtk_grid_get_child_at(grid, @intCast(i % 3), @intCast(i / 3));
+        switch (i) {
+            3, 4, 5 => c.gtk_widget_set_size_request(child, third, fourth + fourth),
+            else => c.gtk_widget_set_size_request(child, third, fourth),
+        }
+    }
 }
