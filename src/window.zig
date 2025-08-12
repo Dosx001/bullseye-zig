@@ -208,12 +208,13 @@ fn update_region(
                 .width = third,
                 .height = fourth,
             },
-            else => .{
+            'o' => .{
                 .x = rect.x + 2 * third,
                 .y = rect.y + 3 * fourth,
                 .width = third,
                 .height = fourth,
             },
+            else => unreachable,
         };
     update_size();
     return 0;
