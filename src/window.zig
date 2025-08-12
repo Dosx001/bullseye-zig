@@ -22,9 +22,7 @@ pub fn init() void {
     const app = c.gtk_application_new("com.github.dosx001.bullseye", c.G_APPLICATION_DEFAULT_FLAGS);
     go.gSignalConnect(app, "activate", c.G_CALLBACK(activate), null);
     controller = c.gtk_shortcut_controller_new();
-    for ([_]u8{ 'w', 's', 'e', 'a', ' ', 'f', 'i', 'd', 'o' }) |char| {
-        region_shortcuts(char);
-    }
+    shortcuts();
     _ = c.g_application_run(@ptrCast(app), @intCast(std.os.argv.len), @ptrCast(std.os.argv.ptr));
     defer c.g_object_unref(app);
 }
@@ -73,14 +71,81 @@ fn update_size() void {
     }
 }
 
-fn region_shortcuts(char: usize) void {
-    const action = c.gtk_callback_action_new(update_region, c.GINT_TO_POINTER(char), null);
-    const trigger = c.gtk_shortcut_trigger_parse_string(if (char == ' ')
-        "space"
-    else
-        @ptrCast(&char));
-    const shortcut = c.gtk_shortcut_new(trigger, action);
-    c.gtk_shortcut_controller_add_shortcut(@ptrCast(controller), shortcut);
+fn shortcuts() void {
+    inline for ([_]u8{ 'j', 'k', 'h', 'l' }) |char| {
+        const action = c.gtk_callback_action_new(move_region, c.GINT_TO_POINTER(char), null);
+        const trigger = c.gtk_shortcut_trigger_parse_string(@ptrCast(&[2]u8{ char, 0 }));
+        const shortcut = c.gtk_shortcut_new(trigger, action);
+        c.gtk_shortcut_controller_add_shortcut(@ptrCast(controller), shortcut);
+    }
+    inline for ([_]u8{ 'q', 'r', 'u' }) |char| {
+        const action = c.gtk_callback_action_new(switch (char) {
+            'q' => quit,
+            'r' => reset,
+            'u' => undo,
+            else => unreachable,
+        }, null, null);
+        const trigger = c.gtk_shortcut_trigger_parse_string(@ptrCast(&[2]u8{ char, 0 }));
+        const shortcut = c.gtk_shortcut_new(trigger, action);
+        c.gtk_shortcut_controller_add_shortcut(@ptrCast(controller), shortcut);
+    }
+    inline for ([_]u8{ 'w', 's', 'e', 'a', ' ', 'f', 'i', 'd', 'o' }) |char| {
+        const action = c.gtk_callback_action_new(update_region, c.GINT_TO_POINTER(char), null);
+        const trigger = c.gtk_shortcut_trigger_parse_string(if (char == ' ')
+            "space"
+        else
+            @ptrCast(&[2]u8{ char, 0 }));
+        const shortcut = c.gtk_shortcut_new(trigger, action);
+        c.gtk_shortcut_controller_add_shortcut(@ptrCast(controller), shortcut);
+    }
+}
+
+fn move_region(
+    _: [*c]c.GtkWidget,
+    _: ?*c.GVariant,
+    user_data: c.gpointer,
+) callconv(.C) c.gboolean {
+    switch (c.GPOINTER_TO_INT(user_data)) {
+        'j' => regions[index].y += 5,
+        'k' => regions[index].y -= 5,
+        'h' => regions[index].x -= 5,
+        'l' => regions[index].x += 5,
+        else => unreachable,
+    }
+    update_size();
+    return 0;
+}
+
+fn quit(
+    _: [*c]c.GtkWidget,
+    _: ?*c.GVariant,
+    _: c.gpointer,
+) callconv(.C) c.gboolean {
+    std.posix.exit(0);
+    return 0;
+}
+
+fn reset(
+    _: [*c]c.GtkWidget,
+    _: ?*c.GVariant,
+    _: c.gpointer,
+) callconv(.C) c.gboolean {
+    index = 0;
+    regions[0].x = 0;
+    regions[0].y = 0;
+    update_size();
+    return 0;
+}
+
+fn undo(
+    _: [*c]c.GtkWidget,
+    _: ?*c.GVariant,
+    _: c.gpointer,
+) callconv(.C) c.gboolean {
+    if (index == 0) return 1;
+    index -= 1;
+    update_size();
+    return 0;
 }
 
 fn update_region(
