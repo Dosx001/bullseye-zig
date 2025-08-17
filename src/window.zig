@@ -2,7 +2,9 @@ const go = @import("gobject.zig");
 const std = @import("std");
 
 const c = @cImport({
+    @cInclude("fcntl.h");
     @cInclude("gtk-4.0/gtk/gtk.h");
+    @cInclude("linux/uinput.h");
 });
 
 const Region = struct {
@@ -15,6 +17,7 @@ const Region = struct {
 var index: usize = 0;
 var regions: [10]Region = undefined;
 var grid: [*c]c.GtkGrid = undefined;
+var window: [*c]c.GtkWindow = undefined;
 
 var controller: ?*c.GtkEventController = undefined;
 
@@ -36,8 +39,8 @@ fn activate(app: [*c]c.GtkApplication, _: c.gpointer) callconv(.C) void {
     var rect: c.GdkRectangle = undefined;
     c.gdk_monitor_get_geometry(monitor, &rect);
     const provider = c.gtk_css_provider_new();
-    const win: [*c]c.GtkWindow = @ptrCast(c.gtk_application_window_new(app));
-    c.gtk_window_fullscreen(win);
+    window = @ptrCast(c.gtk_application_window_new(app));
+    c.gtk_window_fullscreen(window);
     c.gtk_css_provider_load_from_data(provider, @embedFile("styles.css"), -1);
     c.gtk_style_context_add_provider_for_display(
         display,
@@ -51,9 +54,9 @@ fn activate(app: [*c]c.GtkApplication, _: c.gpointer) callconv(.C) void {
         c.gtk_grid_attach(grid, label, @intCast(i % 3), @intCast(i / 3), 1, 1);
     }
     update_size();
-    c.gtk_widget_add_controller(@ptrCast(win), controller);
-    c.gtk_window_set_child(win, @ptrCast(grid));
-    c.gtk_window_present(win);
+    c.gtk_widget_add_controller(@ptrCast(window), controller);
+    c.gtk_window_set_child(window, @ptrCast(grid));
+    c.gtk_window_present(window);
 }
 
 fn update_size() void {
@@ -97,6 +100,34 @@ fn shortcuts() void {
             @ptrCast(&[2]u8{ char, 0 }));
         const shortcut = c.gtk_shortcut_new(trigger, action);
         c.gtk_shortcut_controller_add_shortcut(@ptrCast(controller), shortcut);
+        const action_l_click = c.gtk_callback_action_new(left_click, c.GINT_TO_POINTER(char), null);
+        const trigger_l_click = c.gtk_shortcut_trigger_parse_string(if (char == ' ')
+            "<Alt>space"
+        else
+            @ptrCast(&[_]u8{ '<', 'A', 'l', 't', '>', char, 0 }));
+        const shortcut_l_click = c.gtk_shortcut_new(trigger_l_click, action_l_click);
+        c.gtk_shortcut_controller_add_shortcut(@ptrCast(controller), shortcut_l_click);
+        const action_r_click = c.gtk_callback_action_new(right_click, c.GINT_TO_POINTER(char), null);
+        const trigger_r_click = c.gtk_shortcut_trigger_parse_string(if (char == ' ')
+            "<Control>space"
+        else
+            @ptrCast(&[_]u8{ '<', 'C', 'o', 'n', 't', 'r', 'o', 'l', '>', char, 0 }));
+        const shortcut_r_click = c.gtk_shortcut_new(trigger_r_click, action_r_click);
+        c.gtk_shortcut_controller_add_shortcut(@ptrCast(controller), shortcut_r_click);
+        const action_m_click = c.gtk_callback_action_new(middle_click, c.GINT_TO_POINTER(char), null);
+        const trigger_m_click = c.gtk_shortcut_trigger_parse_string(if (char == ' ')
+            "<Control><Alt>space"
+        else
+            @ptrCast(&[_]u8{ '<', 'C', 'o', 'n', 't', 'r', 'o', 'l', '>', '<', 'A', 'l', 't', '>', char, 0 }));
+        const shortcut_m_click = c.gtk_shortcut_new(trigger_m_click, action_m_click);
+        c.gtk_shortcut_controller_add_shortcut(@ptrCast(controller), shortcut_m_click);
+        const action_move = c.gtk_callback_action_new(move_cursor, c.GINT_TO_POINTER(char), null);
+        const trigger_move = c.gtk_shortcut_trigger_parse_string(if (char == ' ')
+            "<Shift>space"
+        else
+            @ptrCast(&[_]u8{ '<', 'S', 'h', 'i', 'f', 't', '>', char, 0 }));
+        const shortcut_move = c.gtk_shortcut_new(trigger_move, action_move);
+        c.gtk_shortcut_controller_add_shortcut(@ptrCast(controller), shortcut_move);
     }
 }
 
@@ -217,5 +248,150 @@ fn update_region(
             else => unreachable,
         };
     update_size();
+    return 0;
+}
+
+fn emit(
+    fd: c_int,
+    ev_type: c_ushort,
+    code: c_ushort,
+    val: c_int,
+) void {
+    var ev: c.input_event = .{
+        .type = ev_type,
+        .code = code,
+        .value = val,
+        .time = .{
+            .tv_sec = 0,
+            .tv_usec = 0,
+        },
+    };
+    _ = c.write(fd, @ptrCast(&ev), @sizeOf(c.input_event));
+}
+
+fn mouse(
+    region: c.gint,
+    btn: c_ushort,
+    click: bool,
+) void {
+    _ = c.gtk_widget_hide(@ptrCast(window));
+    const fd = c.open("/dev/uinput", c.O_WRONLY | c.O_NONBLOCK);
+    if (fd < 0) return;
+    defer _ = c.close(fd);
+    _ = c.ioctl(fd, c.UI_SET_EVBIT, c.EV_KEY);
+    _ = c.ioctl(fd, c.UI_SET_KEYBIT, btn);
+    _ = c.ioctl(fd, c.UI_SET_EVBIT, c.EV_ABS);
+    _ = c.ioctl(fd, c.UI_SET_ABSBIT, c.ABS_X);
+    _ = c.ioctl(fd, c.UI_SET_ABSBIT, c.ABS_Y);
+    var name = [_:0]u8{0} ** 80;
+    const str = "bullseye";
+    @memcpy(name[0..str.len], str);
+    var usetup: c.uinput_setup = .{ .name = name };
+    _ = c.ioctl(fd, c.UI_DEV_SETUP, &usetup);
+    var abs_setup: c.uinput_abs_setup = .{
+        .code = c.ABS_X,
+        .absinfo = .{
+            .minimum = 0,
+            .maximum = regions[0].width - 1,
+        },
+    };
+    _ = c.ioctl(fd, c.UI_ABS_SETUP, &abs_setup);
+    abs_setup.code = c.ABS_Y;
+    abs_setup.absinfo.maximum = regions[0].height - 1;
+    _ = c.ioctl(fd, c.UI_ABS_SETUP, &abs_setup);
+    _ = c.ioctl(fd, c.UI_DEV_CREATE);
+    const sixth = @divFloor(regions[index].width, 6);
+    const eighth = @divFloor(regions[index].height, 8);
+    var position = [2]c_int{ regions[index].x, regions[index].y };
+    switch (region) {
+        'w' => {
+            position[0] += sixth;
+            position[1] += eighth;
+        },
+        's' => {
+            position[0] += 3 * sixth;
+            position[1] += eighth;
+        },
+        'e' => {
+            position[0] += 5 * sixth;
+            position[1] += eighth;
+        },
+        'a' => {
+            position[0] += sixth;
+            position[1] += 4 * eighth;
+        },
+        ' ' => {
+            position[0] += 3 * sixth;
+            position[1] += 4 * eighth;
+        },
+        'f' => {
+            position[0] += 5 * sixth;
+            position[1] += 4 * eighth;
+        },
+        'i' => {
+            position[0] += sixth;
+            position[1] += 7 * eighth;
+        },
+        'd' => {
+            position[0] += 3 * sixth;
+            position[1] += 7 * eighth;
+        },
+        'o' => {
+            position[0] += 5 * sixth;
+            position[1] += 7 * eighth;
+        },
+        else => unreachable,
+    }
+    std.time.sleep(500_000_000);
+    while (c.g_main_context_iteration(c.g_main_context_default(), 0) == 1) {}
+    emit(fd, c.EV_ABS, c.ABS_X, position[0]);
+    emit(fd, c.EV_ABS, c.ABS_Y, position[1]);
+    emit(fd, c.EV_SYN, c.SYN_REPORT, 0);
+    if (click) {
+        std.time.sleep(100_000_000);
+        emit(fd, c.EV_KEY, btn, 1);
+        emit(fd, c.EV_SYN, c.SYN_REPORT, 0);
+        std.time.sleep(100_000_000);
+        emit(fd, c.EV_KEY, btn, 0);
+        emit(fd, c.EV_SYN, c.SYN_REPORT, 0);
+    }
+    std.time.sleep(500_000_000);
+    _ = c.ioctl(fd, c.UI_DEV_DESTROY);
+    std.posix.exit(0);
+}
+
+fn left_click(
+    _: [*c]c.GtkWidget,
+    _: ?*c.GVariant,
+    data: c.gpointer,
+) callconv(.C) c.gboolean {
+    mouse(c.GPOINTER_TO_INT(data), c.BTN_LEFT, true);
+    return 0;
+}
+
+fn right_click(
+    _: [*c]c.GtkWidget,
+    _: ?*c.GVariant,
+    data: c.gpointer,
+) callconv(.C) c.gboolean {
+    mouse(c.GPOINTER_TO_INT(data), c.BTN_RIGHT, true);
+    return 0;
+}
+
+fn middle_click(
+    _: [*c]c.GtkWidget,
+    _: ?*c.GVariant,
+    data: c.gpointer,
+) callconv(.C) c.gboolean {
+    mouse(c.GPOINTER_TO_INT(data), c.BTN_MIDDLE, true);
+    return 0;
+}
+
+fn move_cursor(
+    _: [*c]c.GtkWidget,
+    _: ?*c.GVariant,
+    data: c.gpointer,
+) callconv(.C) c.gboolean {
+    mouse(c.GPOINTER_TO_INT(data), c.BTN_LEFT, false);
     return 0;
 }
