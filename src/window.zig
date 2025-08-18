@@ -269,16 +269,19 @@ fn emit(
     code: c_ushort,
     val: c_int,
 ) void {
-    var ev: c.input_event = .{
-        .type = ev_type,
-        .code = code,
-        .value = val,
-        .time = .{
-            .tv_sec = 0,
-            .tv_usec = 0,
+    _ = c.write(
+        fd,
+        &c.input_event{
+            .type = ev_type,
+            .code = code,
+            .value = val,
+            .time = .{
+                .tv_sec = 0,
+                .tv_usec = 0,
+            },
         },
-    };
-    _ = c.write(fd, @ptrCast(&ev), @sizeOf(c.input_event));
+        @sizeOf(c.input_event),
+    );
 }
 
 fn uinput() !c_int {
