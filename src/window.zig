@@ -129,6 +129,18 @@ fn shortcuts() void {
         const shortcut_move = c.gtk_shortcut_new(trigger_move, action_move);
         c.gtk_shortcut_controller_add_shortcut(@ptrCast(controller), shortcut_move);
     }
+    for ([_]c_int{ c.BTN_LEFT, c.BTN_MIDDLE, c.BTN_RIGHT }) |btn| {
+        const action = c.gtk_callback_action_new(cursor_click, c.GINT_TO_POINTER(btn), null);
+        const trigger =
+            c.gtk_shortcut_trigger_parse_string(switch (btn) {
+                c.BTN_LEFT => "semicolon",
+                c.BTN_MIDDLE => "<Alt>semicolon",
+                c.BTN_RIGHT => "<Control>semicolon",
+                else => unreachable,
+            });
+        const shortcut = c.gtk_shortcut_new(trigger, action);
+        c.gtk_shortcut_controller_add_shortcut(@ptrCast(controller), shortcut);
+    }
 }
 
 fn move_region(
@@ -269,26 +281,34 @@ fn emit(
     _ = c.write(fd, @ptrCast(&ev), @sizeOf(c.input_event));
 }
 
+fn uinput() !c_int {
+    const fd = c.open("/dev/uinput", c.O_WRONLY | c.O_NONBLOCK);
+    if (fd < 0) return error.OpenFailed;
+    _ = c.ioctl(fd, c.UI_SET_EVBIT, c.EV_KEY);
+    const str = "bullseye";
+    var name: [80]u8 = undefined;
+    @memcpy(name[0..str.len], str);
+    _ = c.ioctl(
+        fd,
+        c.UI_DEV_SETUP,
+        &c.uinput_setup{ .name = name },
+    );
+    return fd;
+}
+
 fn mouse(
     region: c.gint,
     btn: c_ushort,
     click: bool,
 ) void {
     _ = c.gtk_widget_hide(@ptrCast(window));
-    const fd = c.open("/dev/uinput", c.O_WRONLY | c.O_NONBLOCK);
-    if (fd < 0) return;
+    const fd = uinput() catch return;
     defer _ = c.close(fd);
-    _ = c.ioctl(fd, c.UI_SET_EVBIT, c.EV_KEY);
     _ = c.ioctl(fd, c.UI_SET_KEYBIT, btn);
     _ = c.ioctl(fd, c.UI_SET_EVBIT, c.EV_ABS);
     _ = c.ioctl(fd, c.UI_SET_ABSBIT, c.ABS_X);
     _ = c.ioctl(fd, c.UI_SET_ABSBIT, c.ABS_Y);
-    var name = [_:0]u8{0} ** 80;
-    const str = "bullseye";
-    @memcpy(name[0..str.len], str);
-    var usetup: c.uinput_setup = .{ .name = name };
-    _ = c.ioctl(fd, c.UI_DEV_SETUP, &usetup);
-    var abs_setup: c.uinput_abs_setup = .{
+    var abs_setup = c.uinput_abs_setup{
         .code = c.ABS_X,
         .absinfo = .{
             .minimum = 0,
@@ -393,5 +413,29 @@ fn move_cursor(
     data: c.gpointer,
 ) callconv(.C) c.gboolean {
     mouse(c.GPOINTER_TO_INT(data), c.BTN_LEFT, false);
+    return 0;
+}
+
+fn cursor_click(
+    _: [*c]c.GtkWidget,
+    _: ?*c.GVariant,
+    data: c.gpointer,
+) callconv(.C) c.gboolean {
+    _ = c.gtk_widget_hide(@ptrCast(window));
+    const fd = uinput() catch return 1;
+    defer _ = c.close(fd);
+    const btn: c_ushort = @intCast(c.GPOINTER_TO_INT(data));
+    _ = c.ioctl(fd, c.UI_SET_KEYBIT, btn);
+    _ = c.ioctl(fd, c.UI_DEV_CREATE);
+    while (c.g_main_context_iteration(c.g_main_context_default(), 0) == 1) {}
+    std.time.sleep(500_000_000);
+    emit(fd, c.EV_KEY, btn, 1);
+    emit(fd, c.EV_SYN, c.SYN_REPORT, 0);
+    std.time.sleep(100_000_000);
+    emit(fd, c.EV_KEY, btn, 0);
+    emit(fd, c.EV_SYN, c.SYN_REPORT, 0);
+    std.time.sleep(100_000_000);
+    _ = c.ioctl(fd, c.UI_DEV_DESTROY);
+    std.posix.exit(0);
     return 0;
 }
