@@ -284,9 +284,12 @@ fn emit(
     );
 }
 
-fn uinput() !c_int {
+fn uinput() c_int {
     const fd = c.open("/dev/uinput", c.O_WRONLY | c.O_NONBLOCK);
-    if (fd < 0) return error.OpenFailed;
+    if (fd < 0) {
+        std.log.err("Failed to open /dev/uinput", .{});
+        std.posix.exit(1);
+    }
     _ = c.ioctl(fd, c.UI_SET_EVBIT, c.EV_KEY);
     const str = "bullseye";
     var name: [80]u8 = undefined;
@@ -305,7 +308,7 @@ fn mouse(
     click: bool,
 ) void {
     _ = c.gtk_widget_hide(@ptrCast(window));
-    const fd = uinput() catch return;
+    const fd = uinput();
     defer _ = c.close(fd);
     _ = c.ioctl(fd, c.UI_SET_KEYBIT, btn);
     _ = c.ioctl(fd, c.UI_SET_EVBIT, c.EV_ABS);
@@ -425,7 +428,7 @@ fn cursor_click(
     data: c.gpointer,
 ) callconv(.C) c.gboolean {
     _ = c.gtk_widget_hide(@ptrCast(window));
-    const fd = uinput() catch return 1;
+    const fd = uinput();
     defer _ = c.close(fd);
     const btn: c_ushort = @intCast(c.GPOINTER_TO_INT(data));
     _ = c.ioctl(fd, c.UI_SET_KEYBIT, btn);
