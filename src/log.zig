@@ -38,7 +38,7 @@ pub fn logger(
     if (@import("builtin").mode == .Debug) {
         std.debug.lockStdErr();
         defer std.debug.unlockStdErr();
-        const stderr = std.io.getStdErr().writer();
+        const stderr = std.fs.File.stderr().deprecatedWriter();
         nosuspend stderr.print(
             @tagName(level) ++ "|" ++ scope_name ++ format ++ "\n",
             args,

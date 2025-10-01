@@ -30,7 +30,7 @@ pub fn init() void {
     defer c.g_object_unref(app);
 }
 
-fn activate(app: [*c]c.GtkApplication, _: c.gpointer) callconv(.C) void {
+fn activate(app: [*c]c.GtkApplication, _: c.gpointer) callconv(.c) void {
     const display = c.gdk_display_get_default();
     defer c.g_object_unref(display);
     const monitors = c.gdk_display_get_monitors(display);
@@ -147,7 +147,7 @@ fn move_region(
     _: [*c]c.GtkWidget,
     _: ?*c.GVariant,
     user_data: c.gpointer,
-) callconv(.C) c.gboolean {
+) callconv(.c) c.gboolean {
     switch (c.GPOINTER_TO_INT(user_data)) {
         'j' => regions[index].y += 5,
         'k' => regions[index].y -= 5,
@@ -163,7 +163,7 @@ fn quit(
     _: [*c]c.GtkWidget,
     _: ?*c.GVariant,
     _: c.gpointer,
-) callconv(.C) c.gboolean {
+) callconv(.c) c.gboolean {
     std.posix.exit(0);
     return 0;
 }
@@ -172,7 +172,7 @@ fn reset(
     _: [*c]c.GtkWidget,
     _: ?*c.GVariant,
     _: c.gpointer,
-) callconv(.C) c.gboolean {
+) callconv(.c) c.gboolean {
     index = 0;
     regions[0].x = 0;
     regions[0].y = 0;
@@ -184,7 +184,7 @@ fn undo(
     _: [*c]c.GtkWidget,
     _: ?*c.GVariant,
     _: c.gpointer,
-) callconv(.C) c.gboolean {
+) callconv(.c) c.gboolean {
     if (index == 0) return 1;
     index -= 1;
     update_size();
@@ -195,7 +195,7 @@ fn update_region(
     _: [*c]c.GtkWidget,
     _: ?*c.GVariant,
     user_data: c.gpointer,
-) callconv(.C) c.gboolean {
+) callconv(.c) c.gboolean {
     if (regions.len == index + 1) return 0;
     const rect = regions[index];
     index += 1;
@@ -368,20 +368,20 @@ fn mouse(
         },
         else => unreachable,
     }
-    std.time.sleep(500_000_000);
+    std.posix.nanosleep(0, 500 * std.time.ns_per_ms);
     while (c.g_main_context_iteration(c.g_main_context_default(), 0) == 1) {}
     emit(fd, c.EV_ABS, c.ABS_X, position[0]);
     emit(fd, c.EV_ABS, c.ABS_Y, position[1]);
     emit(fd, c.EV_SYN, c.SYN_REPORT, 0);
     if (click) {
-        std.time.sleep(100_000_000);
+        std.posix.nanosleep(0, 100 * std.time.ns_per_ms);
         emit(fd, c.EV_KEY, btn, 1);
         emit(fd, c.EV_SYN, c.SYN_REPORT, 0);
-        std.time.sleep(100_000_000);
+        std.posix.nanosleep(0, 100 * std.time.ns_per_ms);
         emit(fd, c.EV_KEY, btn, 0);
         emit(fd, c.EV_SYN, c.SYN_REPORT, 0);
     }
-    std.time.sleep(500_000_000);
+    std.posix.nanosleep(0, 500 * std.time.ns_per_ms);
     _ = c.ioctl(fd, c.UI_DEV_DESTROY);
     std.posix.exit(0);
 }
@@ -390,7 +390,7 @@ fn left_click(
     _: [*c]c.GtkWidget,
     _: ?*c.GVariant,
     data: c.gpointer,
-) callconv(.C) c.gboolean {
+) callconv(.c) c.gboolean {
     mouse(c.GPOINTER_TO_INT(data), c.BTN_LEFT, true);
     return 0;
 }
@@ -399,7 +399,7 @@ fn right_click(
     _: [*c]c.GtkWidget,
     _: ?*c.GVariant,
     data: c.gpointer,
-) callconv(.C) c.gboolean {
+) callconv(.c) c.gboolean {
     mouse(c.GPOINTER_TO_INT(data), c.BTN_RIGHT, true);
     return 0;
 }
@@ -408,7 +408,7 @@ fn middle_click(
     _: [*c]c.GtkWidget,
     _: ?*c.GVariant,
     data: c.gpointer,
-) callconv(.C) c.gboolean {
+) callconv(.c) c.gboolean {
     mouse(c.GPOINTER_TO_INT(data), c.BTN_MIDDLE, true);
     return 0;
 }
@@ -417,7 +417,7 @@ fn move_cursor(
     _: [*c]c.GtkWidget,
     _: ?*c.GVariant,
     data: c.gpointer,
-) callconv(.C) c.gboolean {
+) callconv(.c) c.gboolean {
     mouse(c.GPOINTER_TO_INT(data), c.BTN_LEFT, false);
     return 0;
 }
@@ -426,7 +426,7 @@ fn cursor_click(
     _: [*c]c.GtkWidget,
     _: ?*c.GVariant,
     data: c.gpointer,
-) callconv(.C) c.gboolean {
+) callconv(.c) c.gboolean {
     _ = c.gtk_widget_hide(@ptrCast(window));
     const fd = uinput();
     defer _ = c.close(fd);
@@ -434,13 +434,13 @@ fn cursor_click(
     _ = c.ioctl(fd, c.UI_SET_KEYBIT, btn);
     _ = c.ioctl(fd, c.UI_DEV_CREATE);
     while (c.g_main_context_iteration(c.g_main_context_default(), 0) == 1) {}
-    std.time.sleep(500_000_000);
+    std.posix.nanosleep(0, 500 * std.time.ns_per_ms);
     emit(fd, c.EV_KEY, btn, 1);
     emit(fd, c.EV_SYN, c.SYN_REPORT, 0);
-    std.time.sleep(100_000_000);
+    std.posix.nanosleep(0, 100 * std.time.ns_per_ms);
     emit(fd, c.EV_KEY, btn, 0);
     emit(fd, c.EV_SYN, c.SYN_REPORT, 0);
-    std.time.sleep(100_000_000);
+    std.posix.nanosleep(0, 100 * std.time.ns_per_ms);
     _ = c.ioctl(fd, c.UI_DEV_DESTROY);
     std.posix.exit(0);
     return 0;
