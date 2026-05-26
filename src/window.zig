@@ -291,9 +291,8 @@ fn uinput() c_int {
         std.posix.exit(1);
     }
     _ = c.ioctl(fd, c.UI_SET_EVBIT, c.EV_KEY);
-    const str = "bullseye";
-    var name: [80]u8 = undefined;
-    @memcpy(name[0..str.len], str);
+    var name = [_]u8{0} ** 80;
+    @memcpy(name[0..8], "bullseye");
     _ = c.ioctl(
         fd,
         c.UI_DEV_SETUP,
