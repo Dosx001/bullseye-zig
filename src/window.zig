@@ -38,24 +38,50 @@ fn activate(app: [*c]gtk.GtkApplication, _: gtk.gpointer) callconv(.c) void {
     const display = gtk.gdk_display_get_default();
     defer gtk.g_object_unref(display);
     const monitors = gtk.gdk_display_get_monitors(display);
-    const monitor: ?*gtk.GdkMonitor = @ptrCast(gtk.g_list_model_get_item(monitors, 0));
+    const monitor: ?*gtk.GdkMonitor = @ptrCast(
+        gtk.g_list_model_get_item(
+            monitors,
+            0,
+        ),
+    );
     defer gtk.g_object_unref(monitor);
     var rect: gtk.GdkRectangle = undefined;
-    gtk.gdk_monitor_get_geometry(monitor, &rect);
+    gtk.gdk_monitor_get_geometry(
+        monitor,
+        &rect,
+    );
     const provider = gtk.gtk_css_provider_new();
-    window = @ptrCast(gtk.gtk_application_window_new(app));
+    window = @ptrCast(
+        gtk.gtk_application_window_new(app),
+    );
     gtk.gtk_window_fullscreen(window);
-    gtk.gtk_css_provider_load_from_data(provider, @embedFile("styles.css"), -1);
+    gtk.gtk_css_provider_load_from_data(
+        provider,
+        @embedFile("styles.css"),
+        -1,
+    );
     gtk.gtk_style_context_add_provider_for_display(
         display,
         @ptrCast(provider),
         gtk.GTK_STYLE_PROVIDER_PRIORITY_USER,
     );
-    regions[index] = .{ .x = 0, .y = 0, .width = rect.width, .height = rect.height };
+    regions[index] = .{
+        .x = 0,
+        .y = 0,
+        .width = rect.width,
+        .height = rect.height,
+    };
     grid = @ptrCast(gtk.gtk_grid_new());
     inline for (0..9) |i| {
         const label = gtk.gtk_label_new("●");
-        gtk.gtk_grid_attach(grid, label, @intCast(i % 3), @intCast(i / 3), 1, 1);
+        gtk.gtk_grid_attach(
+            grid,
+            label,
+            @intCast(i % 3),
+            @intCast(i / 3),
+            1,
+            1,
+        );
     }
     update_size();
     gtk.gtk_widget_add_controller(@ptrCast(window), controller);
@@ -70,20 +96,44 @@ fn update_size() void {
     const fourth = @divFloor(rect.height, 4);
     const third = @divFloor(rect.width, 3);
     inline for (0..9) |i| {
-        const child = gtk.gtk_grid_get_child_at(grid, @intCast(i % 3), @intCast(i / 3));
+        const child = gtk.gtk_grid_get_child_at(
+            grid,
+            @intCast(i % 3),
+            @intCast(i / 3),
+        );
         switch (i) {
-            3, 4, 5 => gtk.gtk_widget_set_size_request(child, third, fourth + fourth),
-            else => gtk.gtk_widget_set_size_request(child, third, fourth),
+            3, 4, 5 => gtk.gtk_widget_set_size_request(
+                child,
+                third,
+                fourth + fourth,
+            ),
+            else => gtk.gtk_widget_set_size_request(
+                child,
+                third,
+                fourth,
+            ),
         }
     }
 }
 
 fn shortcuts() void {
     inline for ([_]u8{ 'j', 'k', 'h', 'l' }) |char| {
-        const action = gtk.gtk_callback_action_new(move_region, gtk.GINT_TO_POINTER(char), null);
-        const trigger = gtk.gtk_shortcut_trigger_parse_string(@ptrCast(&[2]u8{ char, 0 }));
-        const shortcut = gtk.gtk_shortcut_new(trigger, action);
-        gtk.gtk_shortcut_controller_add_shortcut(@ptrCast(controller), shortcut);
+        const action = gtk.gtk_callback_action_new(
+            move_region,
+            gtk.GINT_TO_POINTER(char),
+            null,
+        );
+        const trigger = gtk.gtk_shortcut_trigger_parse_string(
+            @ptrCast(&[2]u8{ char, 0 }),
+        );
+        const shortcut = gtk.gtk_shortcut_new(
+            trigger,
+            action,
+        );
+        gtk.gtk_shortcut_controller_add_shortcut(
+            @ptrCast(controller),
+            shortcut,
+        );
     }
     inline for ([_]u8{ 'q', 'r', 'u' }) |char| {
         const action = gtk.gtk_callback_action_new(switch (char) {
@@ -92,49 +142,145 @@ fn shortcuts() void {
             'u' => undo,
             else => unreachable,
         }, null, null);
-        const trigger = gtk.gtk_shortcut_trigger_parse_string(@ptrCast(&[2]u8{ char, 0 }));
-        const shortcut = gtk.gtk_shortcut_new(trigger, action);
-        gtk.gtk_shortcut_controller_add_shortcut(@ptrCast(controller), shortcut);
+        const trigger = gtk.gtk_shortcut_trigger_parse_string(
+            @ptrCast(&[2]u8{ char, 0 }),
+        );
+        const shortcut = gtk.gtk_shortcut_new(
+            trigger,
+            action,
+        );
+        gtk.gtk_shortcut_controller_add_shortcut(
+            @ptrCast(controller),
+            shortcut,
+        );
     }
-    inline for ([_]u8{ 'w', 's', 'e', 'a', ' ', 'f', 'i', 'd', 'o' }) |char| {
-        const action = gtk.gtk_callback_action_new(update_region, gtk.GINT_TO_POINTER(char), null);
-        const trigger = gtk.gtk_shortcut_trigger_parse_string(if (char == ' ')
-            "space"
-        else
-            @ptrCast(&[2]u8{ char, 0 }));
-        const shortcut = gtk.gtk_shortcut_new(trigger, action);
-        gtk.gtk_shortcut_controller_add_shortcut(@ptrCast(controller), shortcut);
-        const action_l_click = gtk.gtk_callback_action_new(left_click, gtk.GINT_TO_POINTER(char), null);
-        const trigger_l_click = gtk.gtk_shortcut_trigger_parse_string(if (char == ' ')
-            "<Alt>space"
-        else
-            @ptrCast(&[_]u8{ '<', 'A', 'l', 't', '>', char, 0 }));
-        const shortcut_l_click = gtk.gtk_shortcut_new(trigger_l_click, action_l_click);
-        gtk.gtk_shortcut_controller_add_shortcut(@ptrCast(controller), shortcut_l_click);
-        const action_r_click = gtk.gtk_callback_action_new(right_click, gtk.GINT_TO_POINTER(char), null);
-        const trigger_r_click = gtk.gtk_shortcut_trigger_parse_string(if (char == ' ')
-            "<Control>space"
-        else
-            @ptrCast(&[_]u8{ '<', 'C', 'o', 'n', 't', 'r', 'o', 'l', '>', char, 0 }));
-        const shortcut_r_click = gtk.gtk_shortcut_new(trigger_r_click, action_r_click);
-        gtk.gtk_shortcut_controller_add_shortcut(@ptrCast(controller), shortcut_r_click);
-        const action_m_click = gtk.gtk_callback_action_new(middle_click, gtk.GINT_TO_POINTER(char), null);
-        const trigger_m_click = gtk.gtk_shortcut_trigger_parse_string(if (char == ' ')
-            "<Control><Alt>space"
-        else
-            @ptrCast(&[_]u8{ '<', 'C', 'o', 'n', 't', 'r', 'o', 'l', '>', '<', 'A', 'l', 't', '>', char, 0 }));
-        const shortcut_m_click = gtk.gtk_shortcut_new(trigger_m_click, action_m_click);
-        gtk.gtk_shortcut_controller_add_shortcut(@ptrCast(controller), shortcut_m_click);
-        const action_move = gtk.gtk_callback_action_new(move_cursor, gtk.GINT_TO_POINTER(char), null);
-        const trigger_move = gtk.gtk_shortcut_trigger_parse_string(if (char == ' ')
-            "<Shift>space"
-        else
-            @ptrCast(&[_]u8{ '<', 'S', 'h', 'i', 'f', 't', '>', char, 0 }));
-        const shortcut_move = gtk.gtk_shortcut_new(trigger_move, action_move);
-        gtk.gtk_shortcut_controller_add_shortcut(@ptrCast(controller), shortcut_move);
+    inline for ([_]u8{
+        'w', 's', 'e',
+        'a', ' ', 'f',
+        'i', 'd', 'o',
+    }) |char| {
+        const action = gtk.gtk_callback_action_new(
+            update_region,
+            gtk.GINT_TO_POINTER(char),
+            null,
+        );
+        const trigger = gtk.gtk_shortcut_trigger_parse_string(
+            if (char == ' ')
+                "space"
+            else
+                @ptrCast(&[2]u8{ char, 0 }),
+        );
+        const shortcut = gtk.gtk_shortcut_new(
+            trigger,
+            action,
+        );
+        gtk.gtk_shortcut_controller_add_shortcut(
+            @ptrCast(controller),
+            shortcut,
+        );
+        const action_l_click = gtk.gtk_callback_action_new(
+            left_click,
+            gtk.GINT_TO_POINTER(char),
+            null,
+        );
+        const trigger_l_click = gtk.gtk_shortcut_trigger_parse_string(
+            if (char == ' ')
+                "<Alt>space"
+            else
+                @ptrCast(&[_]u8{
+                    '<', 'A', 'l',
+                    't', '>', char,
+                    0,
+                }),
+        );
+        const shortcut_l_click = gtk.gtk_shortcut_new(
+            trigger_l_click,
+            action_l_click,
+        );
+        gtk.gtk_shortcut_controller_add_shortcut(
+            @ptrCast(controller),
+            shortcut_l_click,
+        );
+        const action_r_click = gtk.gtk_callback_action_new(
+            right_click,
+            gtk.GINT_TO_POINTER(char),
+            null,
+        );
+        const trigger_r_click = gtk.gtk_shortcut_trigger_parse_string(
+            if (char == ' ')
+                "<Control>space"
+            else
+                @ptrCast(&[_]u8{
+                    '<',  'C', 'o',
+                    'n',  't', 'r',
+                    'o',  'l', '>',
+                    char, 0,
+                }),
+        );
+        const shortcut_r_click = gtk.gtk_shortcut_new(
+            trigger_r_click,
+            action_r_click,
+        );
+        gtk.gtk_shortcut_controller_add_shortcut(
+            @ptrCast(controller),
+            shortcut_r_click,
+        );
+        const action_m_click = gtk.gtk_callback_action_new(
+            middle_click,
+            gtk.GINT_TO_POINTER(char),
+            null,
+        );
+        const trigger_m_click = gtk.gtk_shortcut_trigger_parse_string(
+            if (char == ' ')
+                "<Control><Alt>space"
+            else
+                @ptrCast(&[_]u8{
+                    '<', 'C', 'o',
+                    'n', 't', 'r',
+                    'o', 'l', '>',
+                    '<', 'A', 'l',
+                    't', '>', char,
+                    0,
+                }),
+        );
+        const shortcut_m_click = gtk.gtk_shortcut_new(
+            trigger_m_click,
+            action_m_click,
+        );
+        gtk.gtk_shortcut_controller_add_shortcut(
+            @ptrCast(controller),
+            shortcut_m_click,
+        );
+        const action_move = gtk.gtk_callback_action_new(
+            move_cursor,
+            gtk.GINT_TO_POINTER(char),
+            null,
+        );
+        const trigger_move = gtk.gtk_shortcut_trigger_parse_string(
+            if (char == ' ')
+                "<Shift>space"
+            else
+                @ptrCast(&[_]u8{ '<', 'S', 'h', 'i', 'f', 't', '>', char, 0 }),
+        );
+        const shortcut_move = gtk.gtk_shortcut_new(
+            trigger_move,
+            action_move,
+        );
+        gtk.gtk_shortcut_controller_add_shortcut(
+            @ptrCast(controller),
+            shortcut_move,
+        );
     }
-    for ([_]c_int{ uinput.BTN_LEFT, uinput.BTN_MIDDLE, uinput.BTN_RIGHT }) |btn| {
-        const action = gtk.gtk_callback_action_new(cursor_click, gtk.GINT_TO_POINTER(btn), null);
+    for ([_]c_int{
+        uinput.BTN_LEFT,
+        uinput.BTN_MIDDLE,
+        uinput.BTN_RIGHT,
+    }) |btn| {
+        const action = gtk.gtk_callback_action_new(
+            cursor_click,
+            gtk.GINT_TO_POINTER(btn),
+            null,
+        );
         const trigger =
             gtk.gtk_shortcut_trigger_parse_string(switch (btn) {
                 uinput.BTN_LEFT => "semicolon",
@@ -142,8 +288,14 @@ fn shortcuts() void {
                 uinput.BTN_RIGHT => "<Control>semicolon",
                 else => unreachable,
             });
-        const shortcut = gtk.gtk_shortcut_new(trigger, action);
-        gtk.gtk_shortcut_controller_add_shortcut(@ptrCast(controller), shortcut);
+        const shortcut = gtk.gtk_shortcut_new(
+            trigger,
+            action,
+        );
+        gtk.gtk_shortcut_controller_add_shortcut(
+            @ptrCast(controller),
+            shortcut,
+        );
     }
 }
 
@@ -286,7 +438,10 @@ fn emit(
 }
 
 fn uinput_init() c_int {
-    const fd = uinput.open("/dev/uinput", uinput.O_WRONLY | uinput.O_NONBLOCK);
+    const fd = uinput.open(
+        "/dev/uinput",
+        uinput.O_WRONLY | uinput.O_NONBLOCK,
+    );
     if (fd < 0) {
         std.log.err("Failed to open /dev/uinput", .{});
         std.posix.system.exit(1);
@@ -445,7 +600,10 @@ fn cursor_click(
     const btn: c_ushort = @intCast(gtk.GPOINTER_TO_INT(data));
     _ = uinput.ioctl(fd, uinput.UI_SET_KEYBIT, btn);
     _ = uinput.ioctl(fd, uinput.UI_DEV_CREATE);
-    while (gtk.g_main_context_iteration(gtk.g_main_context_default(), 0) == 1) {}
+    while (gtk.g_main_context_iteration(
+        gtk.g_main_context_default(),
+        0,
+    ) == 1) {}
     std.Io.sleep(io, .fromMilliseconds(500), .awake) catch unreachable;
     emit(fd, uinput.EV_KEY, btn, 1);
     emit(fd, uinput.EV_SYN, uinput.SYN_REPORT, 0);
