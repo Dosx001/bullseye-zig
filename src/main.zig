@@ -6,8 +6,9 @@ pub const std_options = std.Options{
     .logFn = log.logger,
 };
 
-pub fn main() !void {
-    log.init();
+pub fn main(init: std.process.Init) !void {
+    const io = init.io;
+    log.init(io);
     defer log.deinit();
     win.init();
 }

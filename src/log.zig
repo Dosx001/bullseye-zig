@@ -1,31 +1,22 @@
 const std = @import("std");
+const log = @import("log");
+const builtin = @import("builtin");
 
-const c = @cImport({
-    @cInclude("libnotify/notify.h");
-    @cInclude("syslog.h");
-});
-
-pub fn init() void {
-    _ = c.notify_init("bullseye");
-    if (@import("builtin").mode != .Debug) {
-        c.notify_set_app_icon("/usr/share/icons/hicolor/128x128/apps/bullseye.png");
+pub fn init(io: std.Io) void {
+    _ = log.notify_init("bullseye");
+    if (builtin.mode != .debug) {
+        log.notify_set_app_icon("/usr/share/icons/hicolor/128x128/apps/bullseye.png");
     } else {
-        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-        const allocator = gpa.allocator();
-        const path = std.fs.selfExeDirPathAlloc(allocator) catch unreachable;
-        defer allocator.free(path);
-        const icon = std.fmt.allocPrint(
-            allocator,
-            "{s}pkg/assets/128x128.png",
-            .{path[0 .. path.len - 11]},
-        ) catch unreachable;
-        defer allocator.free(icon);
-        c.notify_set_app_icon(icon.ptr);
+        var buf: [std.Io.Dir.max_path_bytes]u8 = @splat(0);
+        var len = std.process.executableDirPath(io, &buf) catch unreachable;
+        len -= 11;
+        @memcpy(buf[len .. len + 22], "pkg/assets/128x128.png");
+        log.notify_set_app_icon(&buf);
     }
 }
 
 pub fn deinit() void {
-    c.notify_uninit();
+    log.notify_uninit();
 }
 
 pub fn logger(
@@ -34,31 +25,39 @@ pub fn logger(
     comptime format: []const u8,
     args: anytype,
 ) void {
-    const scope_name = if (scope == .default) "" else "(" ++ @tagName(scope) ++ "): ";
-    if (@import("builtin").mode == .Debug) {
-        std.debug.lockStdErr();
-        defer std.debug.unlockStdErr();
-        const stderr = std.fs.File.stderr().deprecatedWriter();
-        nosuspend stderr.print(
-            @tagName(level) ++ "|" ++ scope_name ++ format ++ "\n",
-            args,
-        ) catch return;
+    var buf: [128]u8 = @splat(0);
+    const tty = 1 == std.posix.system.isatty(
+        std.posix.system.STDERR_FILENO,
+    );
+    if (tty) {
+        const io = std.Options.debug_io;
+        const prev = io.swapCancelProtection(.blocked);
+        defer _ = io.swapCancelProtection(prev);
+        const stderr = std.debug.lockStderr(&buf).terminal();
+        defer std.debug.unlockStderr();
+        std.log.defaultLogFileTerminal(level, scope, format, args, stderr) catch |err| {
+            std.log.err("Failed to write log message: {}", .{err});
+            return;
+        };
     }
-    var buf: [64]u8 = undefined;
-    const msg = std.fmt.bufPrintZ(
+    const msg = std.fmt.bufPrint(
         &buf,
-        scope_name ++ format,
+        format,
         args,
-    ) catch return;
+    ) catch |err| {
+        std.log.err("Failed to format log message: {}", .{err});
+        return;
+    };
     if (@intFromEnum(level) < @intFromEnum(std.log.Level.info)) {
-        const note = c.notify_notification_new("bullseye", msg.ptr, null);
-        _ = c.notify_notification_show(note, null);
-        _ = c.g_object_unref(note);
+        const note = log.notify_notification_new("bullseye", msg.ptr, null);
+        _ = log.notify_notification_show(note, null);
+        _ = log.g_object_unref(note);
     }
-    c.syslog(switch (level) {
-        .err => c.LOG_ERR,
-        .warn => c.LOG_WARNING,
-        .info => c.LOG_INFO,
-        .debug => c.LOG_DEBUG,
+    if (tty) return;
+    log.syslog(switch (level) {
+        .err => log.LOG_ERR,
+        .warn => log.LOG_WARNING,
+        .info => log.LOG_INFO,
+        .debug => log.LOG_DEBUG,
     }, "%s", msg.ptr);
 }
